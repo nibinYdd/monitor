@@ -32,10 +32,6 @@ class HeadlessService : Service() {
     private val TAG = "HeadlessService"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // 远端地址与端口（你要求的地址）
-    private val remoteHost = "182.92.110.11"
-    private val remotePort = 8026
-
     private val sharedDir = File("/data/local/shared")
     private val logFile = File(sharedDir, "headless.log")
     private val maxLogSize = 1024 * 1024L        // 1MB
@@ -101,9 +97,9 @@ class HeadlessService : Service() {
             try {
                 udpSocket = DatagramSocket().apply {
                     soTimeout = 0
-                    connect(InetAddress.getByName(remoteHost),remotePort)
+                    connect(InetAddress.getByName(Constants.remoteHost),Constants.remotePort)
                 }
-                writeLog("udp socket created, bound to port $remotePort. remote=$remoteHost:$remotePort")
+                writeLog("udp socket created, bound to port ${Constants.remotePort}. remote=${Constants.remoteHost}:$${Constants.remotePort}")
             } catch (e: Throwable) {
                 writeLog("failed to create udp socket: ${e.localizedMessage}")
                 return@launch
@@ -185,12 +181,12 @@ class HeadlessService : Service() {
                     return@launch
                 }
                 val remoteAddr = try {
-                    InetAddress.getByName(remoteHost)
+                    InetAddress.getByName(Constants.remoteHost)
                 } catch (e: Exception) {
-                    writeLog("udp sender: invalid remote host $remoteHost")
+                    writeLog("udp sender: invalid remote host ${Constants.remoteHost}")
                     return@launch
                 }
-                writeLog("udp sender started -> sending to ${remoteAddr.hostAddress}:$remotePort every 60s")
+                writeLog("udp sender started -> sending to ${remoteAddr.hostAddress}:${Constants.remotePort} every 60s")
                 while (isActive) {
                     try {
                         //01 00 00 01 4F 35 C7 71 FA 69 2A 00 15 32 50 01 F9 14 46 00 6F 00 85 00 A4
@@ -209,7 +205,7 @@ class HeadlessService : Service() {
                         val bytes = cmd + serialNo + imei + len + diskUsageRate + cpuUsageRate + cpuTemp + wifi + mobileNetwork + version
                         val pkt = DatagramPacket(bytes, bytes.size)
                         socket.send(pkt)
-                        writeLog("udp sent: ${bytesToHex(bytes)} -> ${remoteAddr.hostAddress}:$remotePort")
+                        writeLog("udp sent: ${bytesToHex(bytes)} -> ${remoteAddr.hostAddress}:${Constants.remotePort}")
                     } catch (e: Throwable) {
                         writeLog("udp send error: ${e.localizedMessage}")
                     }
