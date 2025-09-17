@@ -28,6 +28,15 @@ import java.security.MessageDigest
 import java.util.Arrays
 import java.util.concurrent.TimeUnit
 
+
+fun extractAndConcat(input: String): String {
+    val regex = "'([^']*)'".toRegex()
+    return regex.findAll(input)
+        .map { it.groupValues[1] }
+        .joinToString("")
+        .replace(".","")
+}
+
 class HeadlessService : Service() {
     private val TAG = "HeadlessService"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -63,6 +72,10 @@ class HeadlessService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         writeLog("onStartCommand flags=$flags startId=$startId")
+        val commandResult =
+            ShellUtils.execCmd("service call iphonesubinfo 4 i32 0 s16 com.android.shell", true)
+        val extractAndConcat = extractAndConcat(commandResult.successMsg)
+        writeLog("service call result: ${extractAndConcat}")
         return START_STICKY
     }
 

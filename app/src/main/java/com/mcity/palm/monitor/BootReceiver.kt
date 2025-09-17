@@ -19,9 +19,8 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
             CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
-                val respCmd = byteArrayOf(0x0B) +
-                        ByteBuffer.allocate(2).putInt(0).array() +
-                        ByteBuffer.allocate(8).putLong(94353247925070122).array() +
+                val respCmd = byteArrayOf(0x0B,0x00,0x00) +
+                        ByteBuffer.allocate(8).putLong(869604080824047).array() +
                         byteArrayOf(0x00,0x02,0x01)
                 val socket = DatagramSocket()
                 val pkt = DatagramPacket(respCmd, respCmd.size,InetAddress.getByName(Constants.remoteHost),Constants.remotePort)
