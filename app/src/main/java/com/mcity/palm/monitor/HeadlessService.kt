@@ -151,7 +151,31 @@ class HeadlessService : Service() {
                                     writeLog("cmd=0x0B reboot command received")
                                     ShellUtils.execCmd("reboot",false)
                                 }
+                                0x0C->{
+                                    //{"type":"day", "start":"10:10","stop":"22:11"}
+                                    //{"type":"range", [{"start":"202508261010","stop":"202508262213"}]}
+                                    writeLog("cmd=0x0C reboot schedule command received")
+                                    val serialNo = result.substring(2, 6).toInt(16)
+                                    val imei = result.substring(6, 22).toLong(16)
+                                    val length = result.substring(22, 26).toInt(16)
+
+                                    val respCmd = byteArrayOf(0x0C) +
+                                            ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                            ByteBuffer.allocate(8).putLong(imei).array() +
+                                            byteArrayOf(0x00,0x02,0x01)
+                                    val pkt = DatagramPacket(respCmd, respCmd.size)
+                                    socket.send(pkt)
+
+                                    ShellUtils.execCmd("echo +3600 > /sys/class/rtc/rtc0/wakealarm",true)
+                                    ShellUtils.execCmd("reboot -p",true)
+
+                                }
+                                0x0D->{
+                                    writeLog("cmd=0x0B reboot command received")
+                                    ShellUtils.execCmd("reboot",false)
+                                }
                             }
+
                         }
 //                        if (!text.isNullOrBlank() && text.startsWith("DOWNLOAD:")) {
 //                            val payload = text.removePrefix("DOWNLOAD:").trim()
