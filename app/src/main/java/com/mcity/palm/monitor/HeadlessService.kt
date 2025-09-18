@@ -9,6 +9,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import com.blankj.utilcode.util.FileIOUtils
+import com.blankj.utilcode.util.FileUtils
 import com.blankj.utilcode.util.ShellUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -28,6 +30,15 @@ import java.security.MessageDigest
 import java.util.Arrays
 import java.util.concurrent.TimeUnit
 
+fun main(){
+    val result = "0e007b014f35c771fa692a000831323334"
+    val serialNo = result.substring(2, 6).toInt(16)
+    val imei = result.substring(6, 22).toLong(16)
+    val length = result.substring(22, 26).toInt(16)
+    val pwdHex = result.substring(26).trim()
+    val pwd = pwdHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
+    println("serialNo=$serialNo imei=$imei length=$length pwd=$pwd")
+}
 
 fun extractAndConcat(input: String): String {
     val regex = "'([^']*)'".toRegex()
@@ -43,9 +54,6 @@ class HeadlessService : Service() {
 
     private val sharedDir = File("/data/local/shared")
     private val logFile = File(sharedDir, "headless.log")
-    private val maxLogSize = 1024 * 1024L        // 1MB
-    private val downloadSemaphore = Semaphore(2) // 并发下载限制
-    private val fileMutex = Mutex()              // 写文件互斥
     private val okClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -165,6 +173,7 @@ class HeadlessService : Service() {
                                     ShellUtils.execCmd("reboot",false)
                                 }
                                 0x0C->{
+                                    //定时开关机
                                     //{"type":"day", "start":"10:10","stop":"22:11"}
                                     //{"type":"range", [{"start":"202508261010","stop":"202508262213"}]}
                                     writeLog("cmd=0x0C reboot schedule command received")
@@ -184,22 +193,104 @@ class HeadlessService : Service() {
 
                                 }
                                 0x0D->{
+                                    //wifi密码
                                     writeLog("cmd=0x0B reboot command received")
                                     ShellUtils.execCmd("reboot",false)
+                                }
+                                0x0E->{
+                                    //更改检测 APP 退出密码
+                                    //0e007b014f35c771fa692a000831323334
+                                    val serialNo = result.substring(2, 6).toInt(16)
+                                    val imei = result.substring(6, 22).toLong(16)
+                                    val length = result.substring(22, 26).toInt(16)
+                                    val pwdHex = result.substring(26).trim()
+                                    val pwd = pwdHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
+                                    val b = FileIOUtils.writeFileFromString(
+                                        File(
+                                            sharedDir,
+                                            "/pwd/password.txt"
+                                        ), pwd
+                                    )
+                                    writeLog("cmd=0x0E serialNo=$serialNo imei=$imei length=$length pwd=$pwd")
+                                    val respCmd = byteArrayOf(0x0E) +
+                                            ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                            ByteBuffer.allocate(8).putLong(imei).array() +
+                                            byteArrayOf(0x00,0x02) +
+                                            byteArrayOf(if (b) 0x01 else 0x00)
+                                    val pkt = DatagramPacket(respCmd, respCmd.size)
+                                    socket.send(pkt)
+                                }
+                                0x0F->{
+                                    //修改心跳时间间隔
+                                    //0f007b014f35c771fa692a00021e
+                                    val serialNo = result.substring(2, 6).toInt(16)
+                                    val imei = result.substring(6, 22).toLong(16)
+                                    val length = result.substring(22, 26).toInt(16)
+                                    val period = result.substring(26).trim().toInt(16)
+                                    val b = FileIOUtils.writeFileFromString(
+                                        File(
+                                            sharedDir,
+                                            "/pwd/heart.txt"
+                                        ), period.toString()
+                                    )
+                                    val respCmd = byteArrayOf(0x0F) +
+                                            ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                            ByteBuffer.allocate(8).putLong(imei).array() +
+                                            byteArrayOf(0x00,0x02) +
+                                            byteArrayOf(if (b) 0x01 else 0x00)
+                                    val pkt = DatagramPacket(respCmd, respCmd.size)
+                                    socket.send(pkt)
+                                }
+                                0x10->{
+                                    //更新模型
+                                    val serialNo = result.substring(2, 6).toInt(16)
+                                    val imei = result.substring(6, 22).toLong(16)
+                                    val length = result.substring(22, 26).toInt(16)
+                                    val urlId = result.substring(26).trim().toInt(16)
+                                    writeLog("cmd=0x10 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
+                                    scope.launch {
+                                        val url = "https://api.guanglongdianzi.cn/prod-api/app/upgrade?imei=${imei}&id=$urlId"
+                                        val ok = downloadAndSave(url)
+                                        writeLog("downloadAndSave result for $url : $ok")
+                                        val respCmd = byteArrayOf(0x10) +
+                                                ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                                ByteBuffer.allocate(8).putLong(imei).array() +
+                                                byteArrayOf(0x00,0x02,if (ok)0x01 else 0x00)
+                                        val pkt = DatagramPacket(respCmd, respCmd.size)
+                                        socket.send(pkt)
+                                    }
+                                }
+                                0x11->{
+                                    //更新监控 APP
+                                    val serialNo = result.substring(2, 6).toInt(16)
+                                    val imei = result.substring(6, 22).toLong(16)
+                                    val length = result.substring(22, 26).toInt(16)
+                                    val urlId = result.substring(26).trim().toInt(16)
+                                    writeLog("cmd=0x11 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
+                                    scope.launch {
+                                        val url = "https://api.guanglongdianzi.cn/prod-api/app/upgrade?imei=${imei}&id=$urlId"
+                                        val ok = downloadAndInstall(url)
+                                        writeLog("downloadAndInstall result for $url : $ok")
+                                        if (ok) {
+                                            val respCmd = byteArrayOf(0x11) +
+                                                    ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                                    ByteBuffer.allocate(8).putLong(imei).array() +
+                                                    byteArrayOf(0x03) +
+                                                    byteArrayOf(0x01,0x00,0x01)
+                                            val pkt = DatagramPacket(respCmd, respCmd.size)
+                                            socket.send(pkt)
+                                        }
+                                    }
+                                }
+                                0x12->{
+                                    //发送待机广告
+                                }
+                                0x13->{
+                                    //清空广告目录
                                 }
                             }
 
                         }
-//                        if (!text.isNullOrBlank() && text.startsWith("DOWNLOAD:")) {
-//                            val payload = text.removePrefix("DOWNLOAD:").trim()
-//                            val parts = payload.split("|")
-//                            val url = parts[0].trim()
-//                            val sha = parts.getOrNull(1)?.trim()
-//                            scope.launch {
-//                                val ok = downloadAndInstall(url, sha)
-//                                writeLog("downloadAndInstall result for $url : $ok")
-//                            }
-//                        }
                     } catch (e: Throwable) {
                         // 当 socket 被 close() 时，会抛异常跳出
                         writeLog("udp receive exception: ${e.localizedMessage}")
@@ -253,58 +344,40 @@ class HeadlessService : Service() {
         }
     }
 
-    // 保存文件（互斥 + 权限设置）
-    private suspend fun saveToShared(filename: String, bytes: ByteArray) {
-        fileMutex.withLock {
-            try {
-                if (!sharedDir.exists()) sharedDir.mkdirs()
-                val f = File(sharedDir, filename)
-                FileOutputStream(f).use { it.write(bytes) }
-                // 尝试用 su 修改权限（设备有 root）
-                try {
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 666 ${f.absolutePath}")).waitFor()
-                } catch (_: Throwable) {}
-            } catch (e: Exception) {
-                writeLog("saveToShared error: ${e.localizedMessage}")
+    suspend fun downloadAndSave(url: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            writeLog("begin download: $url")
+            val out = File(sharedDir, "/tmp/downloaded_${System.currentTimeMillis()}")
+            val ok = downloadFile(url, out)
+            if (!ok) {
+                writeLog("download failed: $url")
+                return@withContext false
             }
+            val copy = FileUtils.copy(out, File(sharedDir, "/model/palm.so"))
+            return@withContext copy
         }
     }
 
     // 下载并安装：返回是否成功
-    suspend fun downloadAndInstall(url: String, expectedSha256: String? = null): Boolean {
+    suspend fun downloadAndInstall(url: String): Boolean {
         return withContext(Dispatchers.IO) {
-            downloadSemaphore.acquire()
-            try {
-                writeLog("begin download: $url")
-                val out = File("/data/local/tmp", "downloaded_${System.currentTimeMillis()}.apk")
-                val ok = downloadFile(url, out)
-                if (!ok) {
-                    writeLog("download failed: $url")
-                    return@withContext false
-                }
-                // 校验 sha256（如果传入）
-                if (!expectedSha256.isNullOrBlank()) {
-                    val sha = computeSha256(out)
-                    if (!sha.equals(expectedSha256, ignoreCase = true)) {
-                        writeLog("sha256 mismatch. expected=$expectedSha256 actual=$sha. deleting file.")
-                        out.delete()
-                        return@withContext false
-                    }
-                }
-                // chmod
-                try { Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 644 ${out.absolutePath}")).waitFor() } catch (_: Throwable) {}
-                // 安装
-                val installed = installApkSilently(out.absolutePath)
-                writeLog("install result: $installed for ${out.absolutePath}")
-                return@withContext installed
-            } finally {
-                downloadSemaphore.release()
+            writeLog("begin download: $url")
+            val out = File("/data/local/tmp", "downloaded_${System.currentTimeMillis()}.apk")
+            val ok = downloadFile(url, out)
+            if (!ok) {
+                writeLog("download failed: $url")
+                return@withContext false
             }
+            // 安装
+            val installed = installApkSilently(out.absolutePath)
+            writeLog("install result: $installed for ${out.absolutePath}")
+            return@withContext installed
         }
     }
 
     // 下载实现（OkHttp）
     private fun downloadFile(url: String, outFile: File): Boolean {
+        //可以先下载到/data/data..目录后通过shell拷贝到local下面
         return try {
             val req = Request.Builder().url(url).build()
             okClient.newCall(req).execute().use { resp ->
@@ -326,24 +399,6 @@ class HeadlessService : Service() {
         }
     }
 
-    // 计算文件 sha256
-    private fun computeSha256(f: File): String? {
-        return try {
-            val md = MessageDigest.getInstance("SHA-256")
-            FileInputStream(f).use { fis ->
-                val buf = ByteArray(8 * 1024)
-                var r: Int
-                while (fis.read(buf).also { r = it } > 0) {
-                    md.update(buf, 0, r)
-                }
-            }
-            val digest = md.digest()
-            digest.joinToString("") { "%02x".format(it) }
-        } catch (e: Exception) {
-            writeLog("sha256 compute error: ${e.localizedMessage}")
-            null
-        }
-    }
 
     // 静默安装 apk（依赖 root）
     private fun installApkSilently(apkPath: String): Boolean {
@@ -378,25 +433,6 @@ class HeadlessService : Service() {
         } catch (e: Exception) {
             writeLog("connectWifi error: ${e.localizedMessage}")
             false
-        }
-    }
-
-    // 简单日志记录（带轮转）
-    private fun rotateLogIfNeeded() {
-        try {
-            if (!logFile.exists()) {
-                logFile.parentFile?.mkdirs()
-                logFile.createNewFile()
-                logFile.setWritable(true, false)
-                logFile.setReadable(true, false)
-            }
-            if (logFile.length() > maxLogSize) {
-                val backup = File(logFile.parentFile, "headless.log.${System.currentTimeMillis()}")
-                logFile.renameTo(backup)
-                logFile.createNewFile()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "rotateLog error", e)
         }
     }
 
