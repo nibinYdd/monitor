@@ -26,9 +26,9 @@ class BootReceiver : BroadcastReceiver() {
                 val pkt = DatagramPacket(respCmd, respCmd.size,InetAddress.getByName(Constants.remoteHost),Constants.remotePort)
                 socket.send(pkt)
             }
-            val script = "/data/local/tmp/boot_headless.sh"
-            val log = "/data/local/shared/boot_headless.log"
-            ShellUtils.execCmd("nohup $script >$log",true)
+//            val script = "/data/local/tmp/boot_headless.sh"
+//            val log = "/data/local/shared/boot_headless.log"
+//            ShellUtils.execCmd("nohup $script >$log",true)
         }
     }
 }

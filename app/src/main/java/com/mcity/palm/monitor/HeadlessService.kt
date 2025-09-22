@@ -52,8 +52,7 @@ class HeadlessService : Service() {
     private val TAG = "HeadlessService"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private val sharedDir = File("/data/local/shared")
-    private val logFile = File(sharedDir, "headless.log")
+    private lateinit var  sharedDir:File //File("/data/local/shared")
     private val okClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -65,6 +64,7 @@ class HeadlessService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        sharedDir = cacheDir
 //        try {
 //            if (!sharedDir.exists()) sharedDir.mkdirs()
 //            rotateLogIfNeeded()
@@ -154,12 +154,12 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x0A serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://api.guanglongdianzi.cn/prod-api/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://api.guanglongdianzi.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndInstall(url)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         if (ok) {
                                             val respCmd = byteArrayOf(0x0A) +
-                                                    ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                                    ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
                                                     ByteBuffer.allocate(8).putLong(imei).array() +
                                                     byteArrayOf(0x03) +
                                                     byteArrayOf(0x01,0x00,0x01)
@@ -182,7 +182,7 @@ class HeadlessService : Service() {
                                     val length = result.substring(22, 26).toInt(16)
 
                                     val respCmd = byteArrayOf(0x0C) +
-                                            ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                            ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
                                             ByteBuffer.allocate(8).putLong(imei).array() +
                                             byteArrayOf(0x00,0x02,0x01)
                                     val pkt = DatagramPacket(respCmd, respCmd.size)
@@ -213,7 +213,7 @@ class HeadlessService : Service() {
                                     )
                                     writeLog("cmd=0x0E serialNo=$serialNo imei=$imei length=$length pwd=$pwd")
                                     val respCmd = byteArrayOf(0x0E) +
-                                            ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                            ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
                                             ByteBuffer.allocate(8).putLong(imei).array() +
                                             byteArrayOf(0x00,0x02) +
                                             byteArrayOf(if (b) 0x01 else 0x00)
@@ -233,8 +233,10 @@ class HeadlessService : Service() {
                                             "/pwd/heart.txt"
                                         ), period.toString()
                                     )
+                                    writeLog("cmd=0x0F serialNo=$serialNo imei=$imei length=$length period=$period")
+
                                     val respCmd = byteArrayOf(0x0F) +
-                                            ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                            ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
                                             ByteBuffer.allocate(8).putLong(imei).array() +
                                             byteArrayOf(0x00,0x02) +
                                             byteArrayOf(if (b) 0x01 else 0x00)
@@ -249,11 +251,11 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x10 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://api.guanglongdianzi.cn/prod-api/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://api.guanglongdianzi.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndSave(url)
                                         writeLog("downloadAndSave result for $url : $ok")
                                         val respCmd = byteArrayOf(0x10) +
-                                                ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                                ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
                                                 ByteBuffer.allocate(8).putLong(imei).array() +
                                                 byteArrayOf(0x00,0x02,if (ok)0x01 else 0x00)
                                         val pkt = DatagramPacket(respCmd, respCmd.size)
@@ -268,12 +270,12 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x11 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://api.guanglongdianzi.cn/prod-api/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://api.guanglongdianzi.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndInstall(url)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         if (ok) {
                                             val respCmd = byteArrayOf(0x11) +
-                                                    ByteBuffer.allocate(2).putInt(serialNo).array() +
+                                                    ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
                                                     ByteBuffer.allocate(8).putLong(imei).array() +
                                                     byteArrayOf(0x03) +
                                                     byteArrayOf(0x01,0x00,0x01)
@@ -284,9 +286,22 @@ class HeadlessService : Service() {
                                 }
                                 0x12->{
                                     //发送待机广告
+                                    val serialNo = result.substring(2, 6).toInt(16)
+                                    val imei = result.substring(6, 22).toLong(16)
+                                    val length = result.substring(22, 26).toInt(16)
+                                    val expire = result.substring(26, 36).toLong(16)
+                                    val strHex = result.substring(36).trim()
+                                    val str = strHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
+                                    writeLog("cmd=0x12 serialNo=$serialNo imei=$imei length=$length expire=$expire str=$str")
+
                                 }
                                 0x13->{
                                     //清空广告目录
+                                    val serialNo = result.substring(2, 6).toInt(16)
+                                    val imei = result.substring(6, 22).toLong(16)
+                                    val length = result.substring(22, 26).toInt(16)
+                                    writeLog("cmd=0x13 serialNo=$serialNo imei=$imei length=$length")
+
                                 }
                             }
 
@@ -362,7 +377,7 @@ class HeadlessService : Service() {
     suspend fun downloadAndInstall(url: String): Boolean {
         return withContext(Dispatchers.IO) {
             writeLog("begin download: $url")
-            val out = File("/data/local/tmp", "downloaded_${System.currentTimeMillis()}.apk")
+            val out = File(sharedDir, "/tmp/downloaded_${System.currentTimeMillis()}.apk")
             val ok = downloadFile(url, out)
             if (!ok) {
                 writeLog("download failed: $url")
