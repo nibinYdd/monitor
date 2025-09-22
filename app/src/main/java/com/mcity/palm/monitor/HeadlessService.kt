@@ -293,7 +293,17 @@ class HeadlessService : Service() {
                                     val strHex = result.substring(36).trim()
                                     val str = strHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
                                     writeLog("cmd=0x12 serialNo=$serialNo imei=$imei length=$length expire=$expire str=$str")
+                                    scope.launch {
+                                        str.split(",").forEachIndexed { index, url ->
+                                            val name = padNumericFilename(url)
 
+                                            val url =
+                                                "https://api.guanglongdianzi.cn/$url"
+                                            val fileName = "$expire-$name"
+                                            val ok = downloadImage(url,fileName)
+                                            writeLog("downloadImage result for $url : $ok")
+                                        }
+                                    }
                                 }
                                 0x13->{
                                     //清空广告目录
@@ -359,6 +369,16 @@ class HeadlessService : Service() {
         }
     }
 
+    fun padNumericFilename(path: String, width: Int = 3): String {
+        val filename = path.substringAfterLast('/')   // 取最后的文件名
+        val dotIndex = filename.lastIndexOf('.')
+        val name = filename.substring(0, dotIndex)    // 数字部分
+        val ext = filename.substring(dotIndex)        // 扩展名
+
+        val padded = name.toInt().toString().padStart(width, '0')
+        return padded + ext
+    }
+
     suspend fun downloadAndSave(url: String): Boolean {
         return withContext(Dispatchers.IO) {
             writeLog("begin download: $url")
@@ -370,6 +390,19 @@ class HeadlessService : Service() {
             }
             val copy = FileUtils.copy(out, File(sharedDir, "/model/palm.so"))
             return@withContext copy
+        }
+    }
+
+    suspend fun downloadImage(url: String,fileName: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            writeLog("begin download: $url")
+            val out = File(sharedDir, "/ads/$fileName")
+            val ok = downloadFile(url, out)
+            if (!ok) {
+                writeLog("download failed: $url")
+                return@withContext false
+            }
+            return@withContext true
         }
     }
 
