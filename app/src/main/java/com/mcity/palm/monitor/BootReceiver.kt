@@ -4,6 +4,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.blankj.utilcode.util.ActivityUtils
+import com.blankj.utilcode.util.FileIOUtils
+import com.blankj.utilcode.util.FileUtils
+import com.blankj.utilcode.util.ResourceUtils
+import com.blankj.utilcode.util.ServiceUtils
 import com.blankj.utilcode.util.ShellUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,17 +23,34 @@ import java.nio.ByteBuffer
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
-            CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
-                val respCmd = byteArrayOf(0x0B,0x00,0x00) +
-                        ByteBuffer.allocate(8).putLong(869604080824047).array() +
-                        byteArrayOf(0x00,0x02,0x01)
-                val socket = DatagramSocket()
-                val pkt = DatagramPacket(respCmd, respCmd.size,InetAddress.getByName(Constants.remoteHost),Constants.remotePort)
-                socket.send(pkt)
+            Log.d("BootReceiver", "Boot completed received")
+            try {
+                CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+                    try {
+                        val respCmd = byteArrayOf(0x0B, 0x00, 0x00) +
+                                ByteBuffer.allocate(8).putLong(869604080824047).array() +
+                                byteArrayOf(0x00, 0x02, 0x01)
+                        val socket = DatagramSocket()
+                        val pkt = DatagramPacket(
+                            respCmd,
+                            respCmd.size,
+                            InetAddress.getByName(Constants.remoteHost),
+                            Constants.remotePort
+                        )
+                        socket.send(pkt)
+                    }catch (e: Exception){
+                        e.printStackTrace()
+                    }
+                }
+            }catch (e: Exception) {
+                e.printStackTrace()
             }
+            ServiceUtils.startService(HeadlessService::class.java)
+//            ResourceUtils.copyFileFromAssets("boot_headless.sh", "${context.cacheDir}/boot_headless.sh")
 //            val script = "/data/local/tmp/boot_headless.sh"
-//            val log = "/data/local/shared/boot_headless.log"
-//            ShellUtils.execCmd("nohup $script >$log",true)
+//            ShellUtils.execCmd("cp ${context.cacheDir}/boot_headless.sh $script",true)
+//            ShellUtils.execCmd("chmod 777 $script",true)
+//            ShellUtils.execCmd("nohup ./$script",true)
         }
     }
 }

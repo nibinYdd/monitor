@@ -1,5 +1,4 @@
 #!/system/bin/sh
-# boot_headless.sh - 放 /data/local/tmp/boot_headless.sh
 PACKAGE="com.mcity.palm.monitor"
 SERVICE_COMPONENT="${PACKAGE}/.HeadlessService"
 LOG="/data/local/shared/boot_headless.log"

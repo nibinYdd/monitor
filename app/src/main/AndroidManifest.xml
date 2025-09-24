@@ -20,20 +20,22 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Monitor"
         tools:targetApi="31" >
-        <activity
-            android:name=".LauncherActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+<!--        <activity-->
+<!--            android:name=".LauncherActivity"-->
+<!--            android:exported="true">-->
+<!--            <intent-filter>-->
+<!--                <action android:name="android.intent.action.MAIN" />-->
+<!--                <category android:name="android.intent.category.LAUNCHER" />-->
+<!--            </intent-filter>-->
+<!--        </activity>-->
 
         <service
             android:name=".HeadlessService"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice|dataSync" />
-        <receiver android:name=".BootReceiver" android:exported="true">
+            android:exported="true"
+            android:enabled="true"
+            android:foregroundServiceType="connectedDevice|dataSync"/>
+
+        <receiver android:name=".BootReceiver" android:exported="true" android:enabled="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>

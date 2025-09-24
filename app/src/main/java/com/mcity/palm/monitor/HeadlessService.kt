@@ -12,6 +12,7 @@ import android.util.Log
 import com.blankj.utilcode.util.FileIOUtils
 import com.blankj.utilcode.util.FileUtils
 import com.blankj.utilcode.util.ShellUtils
+import com.blankj.utilcode.util.TimeUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
@@ -30,28 +31,11 @@ import java.security.MessageDigest
 import java.util.Arrays
 import java.util.concurrent.TimeUnit
 
-fun main(){
-    val result = "0e007b014f35c771fa692a000831323334"
-    val serialNo = result.substring(2, 6).toInt(16)
-    val imei = result.substring(6, 22).toLong(16)
-    val length = result.substring(22, 26).toInt(16)
-    val pwdHex = result.substring(26).trim()
-    val pwd = pwdHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
-    println("serialNo=$serialNo imei=$imei length=$length pwd=$pwd")
-}
-
-fun extractAndConcat(input: String): String {
-    val regex = "'([^']*)'".toRegex()
-    return regex.findAll(input)
-        .map { it.groupValues[1] }
-        .joinToString("")
-        .replace(".","")
-}
-
+//adb shell am start-foreground-service com.mcity.palm.monitor/.HeadlessService
 class HeadlessService : Service() {
     private val TAG = "HeadlessService"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
+    private val localDir = "/data/local/shared"
     private lateinit var  sharedDir:File //File("/data/local/shared")
     private val okClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -64,14 +48,16 @@ class HeadlessService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        writeLog("service onCreate")
         sharedDir = cacheDir
-//        try {
-//            if (!sharedDir.exists()) sharedDir.mkdirs()
-//            rotateLogIfNeeded()
-//            writeLog("service onCreate")
-//        } catch (t: Throwable) {
-//            Log.e(TAG, "init error", t)
-//        }
+        ShellUtils.execCmd("mkdir $localDir",true)
+        ShellUtils.execCmd("mkdir ${localDir}/model",true)
+        ShellUtils.execCmd("mkdir ${localDir}/ads",true)
+        ShellUtils.execCmd("mkdir ${localDir}/pwd",true)
+        ShellUtils.execCmd("mkdir ${localDir}/palm",true)
+        ShellUtils.execCmd("mkdir ${localDir}/tmp",true)
+        ShellUtils.execCmd("mkdir ${localDir}/bak",true)
+
         startForegroundCompat()
         startUdpSocketAndWorkers()
     }
@@ -80,10 +66,6 @@ class HeadlessService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         writeLog("onStartCommand flags=$flags startId=$startId")
-        val commandResult =
-            ShellUtils.execCmd("service call iphonesubinfo 4 i32 0 s16 com.android.shell", true)
-        val extractAndConcat = extractAndConcat(commandResult.successMsg)
-        writeLog("service call result: ${extractAndConcat}")
         return START_STICKY
     }
 
@@ -155,7 +137,7 @@ class HeadlessService : Service() {
                                     writeLog("cmd=0x0A serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
                                         val url = "https://api.guanglongdianzi.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
-                                        val ok = downloadAndInstall(url)
+                                        val ok = downloadAndInstall(url,urlId)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         if (ok) {
                                             val respCmd = byteArrayOf(0x0A) +
@@ -194,8 +176,8 @@ class HeadlessService : Service() {
                                 }
                                 0x0D->{
                                     //wifi密码
-                                    writeLog("cmd=0x0B reboot command received")
-                                    ShellUtils.execCmd("reboot",false)
+                                    writeLog("cmd=0x0D update wifi password command received")
+//                                    ShellUtils.execCmd("reboot",false)
                                 }
                                 0x0E->{
                                     //更改检测 APP 退出密码
@@ -205,12 +187,15 @@ class HeadlessService : Service() {
                                     val length = result.substring(22, 26).toInt(16)
                                     val pwdHex = result.substring(26).trim()
                                     val pwd = pwdHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
-                                    val b = FileIOUtils.writeFileFromString(
-                                        File(
-                                            sharedDir,
-                                            "/pwd/password.txt"
-                                        ), pwd
+                                    val file = File(
+                                        sharedDir,
+                                        "/pwd/password.txt"
                                     )
+                                    val b = FileIOUtils.writeFileFromString(
+                                        file, pwd
+                                    )
+
+                                    ShellUtils.execCmd("mv ${file.absolutePath} ${localDir}/pwd/password.txt",true)
                                     writeLog("cmd=0x0E serialNo=$serialNo imei=$imei length=$length pwd=$pwd")
                                     val respCmd = byteArrayOf(0x0E) +
                                             ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
@@ -227,12 +212,14 @@ class HeadlessService : Service() {
                                     val imei = result.substring(6, 22).toLong(16)
                                     val length = result.substring(22, 26).toInt(16)
                                     val period = result.substring(26).trim().toInt(16)
-                                    val b = FileIOUtils.writeFileFromString(
-                                        File(
-                                            sharedDir,
-                                            "/pwd/heart.txt"
-                                        ), period.toString()
+                                    val file = File(
+                                        sharedDir,
+                                        "/pwd/heart.txt"
                                     )
+                                    val b = FileIOUtils.writeFileFromString(
+                                        file, period.toString()
+                                    )
+                                    ShellUtils.execCmd("mv ${file.absolutePath} ${localDir}/pwd/heart.txt",true)
                                     writeLog("cmd=0x0F serialNo=$serialNo imei=$imei length=$length period=$period")
 
                                     val respCmd = byteArrayOf(0x0F) +
@@ -271,7 +258,7 @@ class HeadlessService : Service() {
                                     writeLog("cmd=0x11 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
                                         val url = "https://api.guanglongdianzi.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
-                                        val ok = downloadAndInstall(url)
+                                        val ok = downloadAndInstall(url,urlId)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         if (ok) {
                                             val respCmd = byteArrayOf(0x11) +
@@ -311,7 +298,10 @@ class HeadlessService : Service() {
                                     val imei = result.substring(6, 22).toLong(16)
                                     val length = result.substring(22, 26).toInt(16)
                                     writeLog("cmd=0x13 serialNo=$serialNo imei=$imei length=$length")
-
+                                    FileUtils.deleteFilesInDir(sharedDir)
+                                    ShellUtils.execCmd("rm -rf ${localDir}/bak/*",true)
+                                    ShellUtils.execCmd("rm -rf ${localDir}/tmp/*",true)
+                                    ShellUtils.execCmd("rm -rf ${localDir}/palm/*",true)
                                 }
                             }
 
@@ -345,28 +335,84 @@ class HeadlessService : Service() {
                         //01 00 00 01 4F 35 C7 71 FA 69 2A 00 15 32 50 01 F9 14 46 00 6F 00 85 00 A4
                         val cmd = byteArrayOf(0x01)
                         val serialNo = byteArrayOf(0x00,0x00)
-                        val imei = ByteBuffer.allocate(8).putLong(94353247925070122).array()
+                        val imei = ByteBuffer.allocate(8).putLong(getIMEI()).array()
                         val len = byteArrayOf(0x00,0x15)
-                        val diskUsageRate = byteArrayOf(0x32)
-                        val cpuUsageRate = byteArrayOf(0x50)
-                        val cpuTemp = byteArrayOf(0x01, 0xF9.toByte())
-                        val wifi = byteArrayOf(0x14)
-                        val mobileNetwork = byteArrayOf(0x46)
-                        val version = byteArrayOf(0x00,0x6F,0x00, 0x85.toByte(),0x00, 0xA4.toByte())
-
-
+                        val diskUsageRate = byteArrayOf(getDiskPercent().toByte())
+                        val cpuUsageRate = byteArrayOf(getCPUUsage().toInt().toByte())
+                        val cpuTemp = ByteBuffer.allocate(2).putShort((getCPUTemp() * 10).toInt().toShort()).array()
+                        val wifi = byteArrayOf(getNetworkSignal().toByte())
+                        val mobileNetwork = byteArrayOf(getNetworkSignal().toByte())
+                        val arrays = BuildConfig.VERSION_NAME.split(".")
+                            .map { ByteBuffer.allocate(2).putShort(it.toShort()).array() }.map { it }
+                        var version = byteArrayOf()
+                        arrays.forEach { version = version+it }
                         val bytes = cmd + serialNo + imei + len + diskUsageRate + cpuUsageRate + cpuTemp + wifi + mobileNetwork + version
                         val pkt = DatagramPacket(bytes, bytes.size)
                         socket.send(pkt)
                         writeLog("udp sent: ${bytesToHex(bytes)} -> ${remoteAddr.hostAddress}:${Constants.remotePort}")
                     } catch (e: Throwable) {
                         writeLog("udp send error: ${e.localizedMessage}")
+                        e.printStackTrace()
                     }
                     delay(60_000L)
                 }
                 writeLog("udp sender exiting")
             }
         }
+    }
+
+    fun extractAndConcat(input: String): String {
+        val regex = "'([^']*)'".toRegex()
+        return regex.findAll(input)
+            .map { it.groupValues[1] }
+            .joinToString("")
+            .replace(".","")
+    }
+
+    fun getIMEI(): Long{
+        val commandResult =
+            ShellUtils.execCmd("service call iphonesubinfo 4 i32 0 s16 com.android.shell", true)
+        val imei =  extractAndConcat(commandResult.successMsg).trim().toLong()
+        writeLog("IMEI=$imei")
+        return imei
+    }
+    fun getCPUTemp(): Double{
+        val result = ShellUtils.execCmd("cat /sys/class/thermal/thermal_zone0/temp", true)
+        val tempStr = result.successMsg.trim()
+        val temp =  tempStr.toIntOrNull()?.div(1000.0) ?: 0.0
+        writeLog("CPUTemp=$temp,${result.successMsg}")
+        return temp
+    }
+
+    fun getNetworkSignal(): Int{
+        val result =
+            ShellUtils.execCmd("dumpsys telephony.registry | grep -i signalstrength -A2", true)
+        val index = result.successMsg.indexOf("CellSignalStrengthLte: rssi=")
+        val signal = if (index>0){
+            result.successMsg.substring(index+28,index+31).toInt()
+        }else{
+            0
+        }
+        writeLog("NetworkSignal=$signal,${result.successMsg}")
+        return signal
+    }
+
+    fun getDiskPercent(): Int{
+        val result = ShellUtils.execCmd("df -h /mnt/user/0/emulated/ | grep /fuse", true)
+        val regex = Regex("""\s(\d+)%\s""")
+        val match = regex.find(result.successMsg)
+        val disk =  match?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        writeLog("DiskUsage=$disk,${result.successMsg}")
+        return disk
+    }
+
+    fun getCPUUsage(): Double{
+        val result = ShellUtils.execCmd("dumpsys cpuinfo | grep TOTAL", true)
+        val regex = Regex("""^([\d.]+)%\s+TOTAL""")
+        val match = regex.find(result.successMsg)
+        val usage =  match?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+        writeLog("CPUUsage=$usage,${result.successMsg}")
+        return usage
     }
 
     fun padNumericFilename(path: String, width: Int = 3): String {
@@ -382,13 +428,22 @@ class HeadlessService : Service() {
     suspend fun downloadAndSave(url: String): Boolean {
         return withContext(Dispatchers.IO) {
             writeLog("begin download: $url")
+            FileUtils.deleteFilesInDir(File(sharedDir, "/tmp"))
             val out = File(sharedDir, "/tmp/downloaded_${System.currentTimeMillis()}")
             val ok = downloadFile(url, out)
             if (!ok) {
                 writeLog("download failed: $url")
                 return@withContext false
             }
-            val copy = FileUtils.copy(out, File(sharedDir, "/model/palm.so"))
+            val file = File(sharedDir, "/model/palm.so")
+            val copy = FileUtils.copy(out, file)
+            if (copy) {
+                ShellUtils.execCmd(
+                    "mv ${localDir}/model/palm.so ${localDir}/bak/${TimeUtils.getNowString(TimeUtils.getSafeDateFormat("yyyyMMddHHmmss"))}.palm.so.bak",
+                    true
+                )
+                ShellUtils.execCmd("mv ${file.absolutePath} ${localDir}/model/palm.so",true)
+            }
             return@withContext copy
         }
     }
@@ -407,15 +462,21 @@ class HeadlessService : Service() {
     }
 
     // 下载并安装：返回是否成功
-    suspend fun downloadAndInstall(url: String): Boolean {
+    suspend fun downloadAndInstall(url: String,urlId: Int): Boolean {
         return withContext(Dispatchers.IO) {
             writeLog("begin download: $url")
-            val out = File(sharedDir, "/tmp/downloaded_${System.currentTimeMillis()}.apk")
+            FileUtils.deleteFilesInDir(File(sharedDir, "/tmp"))
+            val out = File(sharedDir, "/tmp/downloaded_${urlId}.apk")
             val ok = downloadFile(url, out)
             if (!ok) {
                 writeLog("download failed: $url")
                 return@withContext false
             }
+            ShellUtils.execCmd(
+                "mv ${localDir}/tmp/downloaded_${urlId}.apk ${localDir}/bak/${TimeUtils.getNowString(TimeUtils.getSafeDateFormat("yyyyMMddHHmmss"))}_${urlId}.apk.bak",
+                true
+            )
+            ShellUtils.execCmd("mv ${out.absolutePath} ${localDir}/tmp/downloaded_${urlId}.apk",true)
             // 安装
             val installed = installApkSilently(out.absolutePath)
             writeLog("install result: $installed for ${out.absolutePath}")
