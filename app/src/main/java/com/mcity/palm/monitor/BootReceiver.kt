@@ -24,27 +24,6 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
             Log.d("BootReceiver", "Boot completed received")
-            try {
-                CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
-                    try {
-                        val respCmd = byteArrayOf(0x0B, 0x00, 0x00) +
-                                ByteBuffer.allocate(8).putLong(869604080824047).array() +
-                                byteArrayOf(0x00, 0x02, 0x01)
-                        val socket = DatagramSocket()
-                        val pkt = DatagramPacket(
-                            respCmd,
-                            respCmd.size,
-                            InetAddress.getByName(Constants.remoteHost),
-                            Constants.remotePort
-                        )
-                        socket.send(pkt)
-                    }catch (e: Exception){
-                        e.printStackTrace()
-                    }
-                }
-            }catch (e: Exception) {
-                e.printStackTrace()
-            }
             ServiceUtils.startService(HeadlessService::class.java)
 //            ResourceUtils.copyFileFromAssets("boot_headless.sh", "${context.cacheDir}/boot_headless.sh")
 //            val script = "/data/local/tmp/boot_headless.sh"

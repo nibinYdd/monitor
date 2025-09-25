@@ -4,9 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.blankj.utilcode.util.FileIOUtils
@@ -14,21 +12,14 @@ import com.blankj.utilcode.util.FileUtils
 import com.blankj.utilcode.util.ShellUtils
 import com.blankj.utilcode.util.TimeUtils
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.security.MessageDigest
-import java.util.Arrays
 import java.util.concurrent.TimeUnit
 
 //adb shell am start-foreground-service com.mcity.palm.monitor/.HeadlessService
@@ -36,13 +27,12 @@ class HeadlessService : Service() {
     private val TAG = "HeadlessService"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val localDir = "/data/local/shared"
-    private lateinit var  sharedDir:File //File("/data/local/shared")
+    private lateinit var  sharedDir:File
     private val okClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    // UDP socket will be created in onCreate and closed in onDestroy
     @Volatile
     private var udpSocket: DatagramSocket? = null
 
@@ -316,7 +306,6 @@ class HeadlessService : Service() {
                 writeLog("udp receiver exiting")
             }
 
-            // Launch periodic sender coroutine (every 60s)
             scope.launch {
                 val socket = udpSocket
                 if (socket == null) {
@@ -478,15 +467,14 @@ class HeadlessService : Service() {
             )
             ShellUtils.execCmd("mv ${out.absolutePath} ${localDir}/tmp/downloaded_${urlId}.apk",true)
             // 安装
-            val installed = installApkSilently(out.absolutePath)
-            writeLog("install result: $installed for ${out.absolutePath}")
+            val installed = installApkSilently("${localDir}/tmp/downloaded_${urlId}.apk")
+            writeLog("install result: $installed for ${localDir}/tmp/downloaded_${urlId}.apk")
             return@withContext installed
         }
     }
 
     // 下载实现（OkHttp）
     private fun downloadFile(url: String, outFile: File): Boolean {
-        //可以先下载到/data/data..目录后通过shell拷贝到local下面
         return try {
             val req = Request.Builder().url(url).build()
             okClient.newCall(req).execute().use { resp ->
@@ -512,38 +500,15 @@ class HeadlessService : Service() {
     // 静默安装 apk（依赖 root）
     private fun installApkSilently(apkPath: String): Boolean {
         return try {
-            val cmd = arrayOf("su", "-c", "pm install  \"$apkPath\"")
-            val p = Runtime.getRuntime().exec(cmd)
-            val out = p.inputStream.bufferedReader().readText()
-            p.waitFor(30, TimeUnit.SECONDS)
-            writeLog("pm install output: $out")
-            out.contains("Success", ignoreCase = true)
+            val execCmd = ShellUtils.execCmd("pm install $apkPath", true)
+            writeLog("installApkSilently result=${execCmd.result} out=${execCmd.successMsg} err=${execCmd.errorMsg}")
+            execCmd.result >= 0 && execCmd.successMsg.contains("Success", ignoreCase = true)
         } catch (e: Exception) {
             writeLog("install error: ${e.localizedMessage}")
             false
         }
     }
 
-    // WiFi connect 使用 wpa_cli via su（线程阻塞）
-    fun connectWifi(ssid: String, psk: String): Boolean {
-        return try {
-            writeLog("connectWifi ssid=$ssid")
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "svc wifi enable")).waitFor()
-            val iface = "wlan0" // TODO: 根据设备调整
-            val addProc = Runtime.getRuntime().exec(arrayOf("su", "-c", "wpa_cli -i $iface add_network"))
-            val netId = addProc.inputStream.bufferedReader().readText().trim().lines().lastOrNull() ?: return false
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "wpa_cli -i $iface set_network $netId ssid '\"$ssid\"'")).waitFor()
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "wpa_cli -i $iface set_network $netId psk '\"$psk\"'")).waitFor()
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "wpa_cli -i $iface enable_network $netId")).waitFor()
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "wpa_cli -i $iface save_config")).waitFor()
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "wpa_cli -i $iface reconfigure")).waitFor()
-            writeLog("connectWifi command sequence done")
-            true
-        } catch (e: Exception) {
-            writeLog("connectWifi error: ${e.localizedMessage}")
-            false
-        }
-    }
 
     private fun writeLog(msg: String) {
         Log.i(TAG, msg)
