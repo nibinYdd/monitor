@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.IBinder
 import android.util.Log
 import com.blankj.utilcode.util.FileIOUtils
@@ -36,10 +37,13 @@ class HeadlessService : Service() {
     @Volatile
     private var udpSocket: DatagramSocket? = null
 
+    private lateinit var pref: SharedPreferences
     override fun onCreate() {
         super.onCreate()
         writeLog("service onCreate")
         sharedDir = cacheDir
+        pref = getSharedPreferences("config", MODE_PRIVATE)
+
         ShellUtils.execCmd("mkdir $localDir",true)
         ShellUtils.execCmd("mkdir ${localDir}/model",true)
         ShellUtils.execCmd("mkdir ${localDir}/ads",true)
@@ -217,21 +221,16 @@ class HeadlessService : Service() {
                                     val imei = result.substring(6, 22).toLong(16)
                                     val length = result.substring(22, 26).toInt(16)
                                     val period = result.substring(26).trim().toInt(16)
-                                    val file = File(
-                                        sharedDir,
-                                        "/pwd/heart.txt"
-                                    )
-                                    val b = FileIOUtils.writeFileFromString(
-                                        file, period.toString()
-                                    )
-                                    ShellUtils.execCmd("mv ${file.absolutePath} ${localDir}/pwd/heart.txt",true)
+
+                                    pref.edit().putInt("heart",period).apply()
+
                                     writeLog("cmd=0x0F serialNo=$serialNo imei=$imei length=$length period=$period")
 
                                     val respCmd = byteArrayOf(0x0F) +
                                             ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
                                             ByteBuffer.allocate(8).putLong(imei).array() +
                                             byteArrayOf(0x00,0x02) +
-                                            byteArrayOf(if (b) 0x01 else 0x00)
+                                            byteArrayOf(0x01)
                                     val pkt = DatagramPacket(respCmd, respCmd.size)
                                     socket.send(pkt)
                                 }
@@ -363,6 +362,7 @@ class HeadlessService : Service() {
                         var version = byteArrayOf()
                         arrays.forEach { version = version+it }
                         val bytes = cmd + serialNo + imei + len + diskUsageRate + cpuUsageRate + cpuTemp + wifi + mobileNetwork + version
+//                        val bytes = byteArrayOf(0x01, 0x00, 0x00, 0x01)
                         val pkt = DatagramPacket(bytes, bytes.size)
                         socket.send(pkt)
                         writeLog("udp sent: ${bytesToHex(bytes)} -> ${remoteAddr.hostAddress}:${Constants.remotePort}")
@@ -370,7 +370,7 @@ class HeadlessService : Service() {
                         writeLog("udp send error: ${e.localizedMessage}")
                         e.printStackTrace()
                     }
-                    delay(60_000L)
+                    delay(pref.getInt("heart",60) * 1000L)
                 }
                 writeLog("udp sender exiting")
             }
