@@ -6,10 +6,12 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Environment
 import android.os.IBinder
 import android.util.Log
 import com.blankj.utilcode.util.FileIOUtils
 import com.blankj.utilcode.util.FileUtils
+import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ShellUtils
 import com.blankj.utilcode.util.TimeUtils
 import kotlinx.coroutines.*
@@ -40,6 +42,14 @@ class HeadlessService : Service() {
     private lateinit var pref: SharedPreferences
     override fun onCreate() {
         super.onCreate()
+        LogUtils.getConfig()
+            .setLogHeadSwitch(false)
+            .setDir(externalCacheDir?.absolutePath + "/log")
+            .setLog2FileSwitch(true)
+            .setBorderSwitch(false)
+            .setGlobalTag(TAG)
+            .setSaveDays(3)
+
         writeLog("service onCreate")
         sharedDir = cacheDir
         pref = getSharedPreferences("config", MODE_PRIVATE)
@@ -362,7 +372,6 @@ class HeadlessService : Service() {
                         var version = byteArrayOf()
                         arrays.forEach { version = version+it }
                         val bytes = cmd + serialNo + imei + len + diskUsageRate + cpuUsageRate + cpuTemp + wifi + mobileNetwork + version
-//                        val bytes = byteArrayOf(0x01, 0x00, 0x00, 0x01)
                         val pkt = DatagramPacket(bytes, bytes.size)
                         socket.send(pkt)
                         writeLog("udp sent: ${bytesToHex(bytes)} -> ${remoteAddr.hostAddress}:${Constants.remotePort}")
@@ -538,7 +547,7 @@ class HeadlessService : Service() {
 
 
     private fun writeLog(msg: String) {
-        Log.i(TAG, msg)
+        LogUtils.e(msg)
 //        try {
 //            rotateLogIfNeeded()
 //            val line = "${System.currentTimeMillis()} $msg\n"
