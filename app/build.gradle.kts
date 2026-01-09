@@ -11,8 +11,8 @@ android {
         applicationId = "com.mcity.palm.monitor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 104
-        versionName = "1.0.4"
+        versionCode = 107
+        versionName = "1.0.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -35,6 +35,14 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+    }
+
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            output.outputFileName = "Monitor_${variant.versionCode}_${variant.versionName}.apk"
+        }
     }
 }
 

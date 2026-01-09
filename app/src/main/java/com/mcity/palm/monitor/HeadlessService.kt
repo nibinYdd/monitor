@@ -140,7 +140,7 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x0A serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://api.guanglongdianzi.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://device-api.mcitylives.net/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndInstall(url,urlId)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         val respCmd = byteArrayOf(0x0A) +
@@ -252,7 +252,7 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x10 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://api.guanglongdianzi.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://device-api.mcitylives.net/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndSave(url)
                                         writeLog("downloadAndSave result for $url : $ok")
                                         val respCmd = byteArrayOf(0x10) +
@@ -271,7 +271,7 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x11 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://api.guanglongdianzi.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://device-api.mcitylives.net/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndInstall(url,urlId)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         val respCmd = byteArrayOf(0x11) +
@@ -302,8 +302,6 @@ class HeadlessService : Service() {
                                         str.split(",").forEachIndexed { index, url ->
                                             val name = padNumericFilename(url)
 
-                                            val url =
-                                                "https://api.guanglongdianzi.cn/$url"
                                             val fileName = "$expire-$name"
                                             val ok = downloadImage(url,fileName)
                                             writeLog("downloadImage result for $url : $ok")
