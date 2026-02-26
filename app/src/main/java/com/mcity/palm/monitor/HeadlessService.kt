@@ -101,15 +101,18 @@ class HeadlessService : Service() {
 
     private fun startUdpSocketAndWorkers() {
         scope.launch {
-            try {
-                udpSocket = DatagramSocket().apply {
-                    soTimeout = 0
-                    connect(InetAddress.getByName(Constants.remoteHost),Constants.remotePort)
+            while (udpSocket == null){
+                try {
+                    udpSocket = DatagramSocket().apply {
+                        soTimeout = 0
+                        connect(InetAddress.getByName(Constants.remoteHost),Constants.remotePort)
+                    }
+                    writeLog("udp socket created, bound to port ${Constants.remotePort}. remote=${Constants.remoteHost}:$${Constants.remotePort}")
+                } catch (e: Throwable) {
+                    writeLog("failed to create udp socket: ${e.localizedMessage}")
+                    udpSocket = null
+                    delay(5000)
                 }
-                writeLog("udp socket created, bound to port ${Constants.remotePort}. remote=${Constants.remoteHost}:$${Constants.remotePort}")
-            } catch (e: Throwable) {
-                writeLog("failed to create udp socket: ${e.localizedMessage}")
-                return@launch
             }
 
             // Launch receiver coroutine
@@ -140,7 +143,7 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x0A serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://device-api.mcitylives.net/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://device-api.mcitylives.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndInstall(url,urlId)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         val respCmd = byteArrayOf(0x0A) +
@@ -252,7 +255,7 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x10 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://device-api.mcitylives.net/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://device-api.mcitylives.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndSave(url)
                                         writeLog("downloadAndSave result for $url : $ok")
                                         val respCmd = byteArrayOf(0x10) +
@@ -271,7 +274,7 @@ class HeadlessService : Service() {
                                     val urlId = result.substring(26).trim().toInt(16)
                                     writeLog("cmd=0x11 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
                                     scope.launch {
-                                        val url = "https://device-api.mcitylives.net/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
+                                        val url = "https://device-api.mcitylives.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndInstall(url,urlId)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         val respCmd = byteArrayOf(0x11) +
@@ -305,6 +308,7 @@ class HeadlessService : Service() {
                                             val fileName = "$expire-$name"
                                             val ok = downloadImage(url,fileName)
                                             writeLog("downloadImage result for $url : $ok")
+
                                         }
                                     }
                                 }
@@ -480,6 +484,7 @@ class HeadlessService : Service() {
                 writeLog("download failed: $url")
                 return@withContext false
             }
+            ShellUtils.execCmd("mv ${out.absolutePath} ${localDir}/ads/$fileName",true)
             return@withContext true
         }
     }
