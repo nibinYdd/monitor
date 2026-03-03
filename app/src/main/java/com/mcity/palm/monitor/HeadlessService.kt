@@ -218,6 +218,7 @@ class HeadlessService : Service() {
                                     )
 
                                     ShellUtils.execCmd("mv ${file.absolutePath} ${localDir}/pwd/password.txt",true)
+                                    ShellUtils.execCmd("chmod 777 ${localDir}/pwd/password.txt",true)
                                     writeLog("cmd=0x0E serialNo=$serialNo imei=$imei length=$length pwd=$pwd")
                                     val respCmd = byteArrayOf(0x0E) +
                                             ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
@@ -470,6 +471,7 @@ class HeadlessService : Service() {
                     true
                 )
                 ShellUtils.execCmd("mv ${file.absolutePath} ${localDir}/model/palm.so",true)
+                ShellUtils.execCmd("chmod 777 ${localDir}/model/palm.so",true)
             }
             return@withContext copy
         }
@@ -485,6 +487,7 @@ class HeadlessService : Service() {
                 return@withContext false
             }
             ShellUtils.execCmd("mv ${out.absolutePath} ${localDir}/ads/$fileName",true)
+            ShellUtils.execCmd("chmod 777 ${localDir}/ads/$fileName",true)
             return@withContext true
         }
     }
