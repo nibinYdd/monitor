@@ -15,6 +15,7 @@ import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ShellUtils
 import com.blankj.utilcode.util.TimeUtils
 import kotlinx.coroutines.*
+import okhttp3.CacheControl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -133,6 +134,7 @@ class HeadlessService : Service() {
                         val result = String(data)
                         writeLog("udp recv saved: ${data.contentToString()},${String(data)} size=$len from ${pkt.address.hostAddress}:${pkt.port}")
                         //0a007b014f35c771fa692a00019
+                        //0a000000031285a1a9ee46006868747470733a2f2f696d672e6d636974796c697665732e636e2f736f6674776172652f313737323530363334303735352e61706b
                         if (result.length>=26){
                             val cmd = result.substring(0, 2).toInt(16)
                             when(cmd){
@@ -140,11 +142,11 @@ class HeadlessService : Service() {
                                     val serialNo = result.substring(2, 6).toInt(16)
                                     val imei = result.substring(6, 22).toLong(16)
                                     val length = result.substring(22, 26).toInt(16)
-                                    val urlId = result.substring(26).trim().toInt(16)
-                                    writeLog("cmd=0x0A serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
+                                    val strHex = result.substring(26).trim()
+                                    val url = strHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
+                                    writeLog("cmd=0x0A serialNo=$serialNo imei=$imei length=$length url=$url")
                                     scope.launch {
-                                        val url = "https://device-api.mcitylives.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
-                                        val ok = downloadAndInstall(url,urlId)
+                                        val ok = downloadAndInstall(url,9)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         val respCmd = byteArrayOf(0x0A) +
                                                 ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
@@ -253,10 +255,10 @@ class HeadlessService : Service() {
                                     val serialNo = result.substring(2, 6).toInt(16)
                                     val imei = result.substring(6, 22).toLong(16)
                                     val length = result.substring(22, 26).toInt(16)
-                                    val urlId = result.substring(26).trim().toInt(16)
-                                    writeLog("cmd=0x10 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
+                                    val strHex = result.substring(26).trim()
+                                    val url = strHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
+                                    writeLog("cmd=0x10 serialNo=$serialNo imei=$imei length=$length url=$url")
                                     scope.launch {
-                                        val url = "https://device-api.mcitylives.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
                                         val ok = downloadAndSave(url)
                                         writeLog("downloadAndSave result for $url : $ok")
                                         val respCmd = byteArrayOf(0x10) +
@@ -272,11 +274,11 @@ class HeadlessService : Service() {
                                     val serialNo = result.substring(2, 6).toInt(16)
                                     val imei = result.substring(6, 22).toLong(16)
                                     val length = result.substring(22, 26).toInt(16)
-                                    val urlId = result.substring(26).trim().toInt(16)
-                                    writeLog("cmd=0x11 serialNo=$serialNo imei=$imei length=$length urlId=$urlId")
+                                    val strHex = result.substring(26).trim()
+                                    val url = strHex.chunked(2).map { it.toInt(16).toChar() }.joinToString("")
+                                    writeLog("cmd=0x11 serialNo=$serialNo imei=$imei length=$length url=$url")
                                     scope.launch {
-                                        val url = "https://device-api.mcitylives.cn/prod-api/device/app/upgrade?imei=${imei}&id=$urlId"
-                                        val ok = downloadAndInstall(url,urlId)
+                                        val ok = downloadAndInstall(url,10)
                                         writeLog("downloadAndInstall result for $url : $ok")
                                         val respCmd = byteArrayOf(0x11) +
                                                 ByteBuffer.allocate(2).putShort(serialNo.toShort()).array() +
@@ -518,7 +520,7 @@ class HeadlessService : Service() {
     // 下载实现（OkHttp）
     private fun downloadFile(url: String, outFile: File): Boolean {
         return try {
-            val req = Request.Builder().url(url).build()
+            val req = Request.Builder().url(url).cacheControl(CacheControl.FORCE_NETWORK).build()
             okClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     writeLog("http failed code=${resp.code}")
