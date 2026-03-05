@@ -9,6 +9,7 @@ import android.content.SharedPreferences
 import android.os.Environment
 import android.os.IBinder
 import android.util.Log
+import com.blankj.utilcode.util.ActivityUtils
 import com.blankj.utilcode.util.FileIOUtils
 import com.blankj.utilcode.util.FileUtils
 import com.blankj.utilcode.util.LogUtils
@@ -513,6 +514,14 @@ class HeadlessService : Service() {
             // 安装
             val installed = installApkSilently("${localDir}/tmp/downloaded_${urlId}.apk")
             writeLog("install result: $installed for ${localDir}/tmp/downloaded_${urlId}.apk")
+            if (urlId == 9){
+                try {
+                    ActivityUtils.startLauncherActivity("com.mcity.palm")
+                    writeLog("start activity result: success")
+                }catch (e: Exception){
+                    writeLog("start activity result: error")
+                }
+            }
             return@withContext installed
         }
     }
