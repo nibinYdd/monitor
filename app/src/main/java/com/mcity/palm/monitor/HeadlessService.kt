@@ -333,7 +333,7 @@ class HeadlessService : Service() {
                                     FileUtils.deleteFilesInDir(sharedDir)
                                     ShellUtils.execCmd("rm -rf ${localDir}/bak/*",true)
                                     ShellUtils.execCmd("rm -rf ${localDir}/tmp/*",true)
-                                    ShellUtils.execCmd("rm -rf ${localDir}/palm/*",true)
+                                    ShellUtils.execCmd("rm -rf ${localDir}/ads/*",true)
                                 }
                             }
 
